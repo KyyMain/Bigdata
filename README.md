@@ -3,12 +3,12 @@
 ## Ringkasan Tim
 - **Nama Praktikan**: _Eky Fikri Yamansyah_
 - **NIM**: _312310572_
-- **Dosen Pengampu / Asisten**: _Isikan nama pengampu_
+
 
 ## Daftar Isi
 1. [Pendahuluan](#pendahuluan)
 2. [Praktikum 1 – HDFS, MongoDB, Cassandra](#praktikum-1--hdfs-mongodb-cassandra)
-3. [Praktikum 2 – _(sesuaikan topik)_](#praktikum-2--)
+3. [Praktikum 2 – Word Count (MapReduce, Spark RDD, DataFrame)](#praktikum-2--word-count-mapreduce-spark-rdd-dataframe)
 4. [Praktikum 3 – _(sesuaikan topik)_](#praktikum-3--)
 5. [Praktikum 4 – _(sesuaikan topik)_](#praktikum-4--)
 6. [Refleksi Akhir](#refleksi-akhir)
@@ -18,7 +18,7 @@
 
 > **Dokumentasi**  
 > - [✅] Praktikum 1 selesai
-> - [ ] Praktikum 2 selesai
+> - [✅] Praktikum 2 selesai
 > - [ ] Praktikum 3 selesai
 > - [ ] Praktikum 4 selesai
 
@@ -276,21 +276,177 @@ _Gambar 6. Distribusi token dan replika data pada cluster Cassandra dua node._
 
 ---
 
-## Praktikum 2 – _(sesuaikan topik)_
+## Praktikum 2 – Word Count (MapReduce, Spark RDD, DataFrame)
 ### Ringkasan Tujuan
-- Tuliskan kompetensi yang diuji pada praktikum 2 (contoh: MapReduce dasar, Hive, dsb.).
+- Membandingkan tiga pendekatan pemrosesan data besar untuk kasus Word Count: Hadoop Streaming (MapReduce), Spark RDD, dan Spark DataFrame/SQL.
+- Memahami perbedaan arsitektur, sintaks, dan performa masing‑masing teknologi.
 
-### Alur Kegiatan
-1. Tahap persiapan lingkungan.
-2. Eksekusi perintah utama.
-3. Validasi hasil dan dokumentasi.
+### Requirements
+- Hadoop (cluster/single‑node) + HDFS aktif.
+- Apache Spark 3.x + PySpark.
+- Python 3.x.
+- File: `input.txt`, `mapper.py`, `reducer.py`.
 
-### Bukti Eksperimen
-- Lampirkan tangkapan layar (`doc/prak2-step1.png`, dst.).
-- Sertakan interpretasi hasil yang relevan.
+### Setup Awal
+1) Siapkan direktori dan unggah data ke HDFS
+```bash
+hdfs dfs -mkdir -p /praktikum/latihan_mr/input
+hdfs dfs -put input.txt /praktikum/latihan_mr/input/
+hdfs dfs -ls /praktikum/latihan_mr/input
+```
 
-### Pembelajaran Kunci
-- Catatan poin-poin penting dan potensi perluasan eksperimen.
+2) Pastikan file mapper/reducer dapat dieksekusi
+```bash
+chmod +x mapper.py reducer.py
+```
+
+---
+
+### Sesi 1 — MapReduce (Hadoop Streaming)
+Gunakan skrip berikut:
+
+`mapper.py`
+```python
+#!/usr/bin/env python
+import sys
+
+for line in sys.stdin:
+    words = line.strip().split()
+    for word in words:
+        print(f"{word.lower()}\t1")
+```
+
+`reducer.py`
+```python
+#!/usr/bin/env python
+import sys
+from itertools import groupby
+
+for key, group in groupby(sys.stdin, key=lambda x: x.split('\t', 1)[0]):
+    try:
+        total_count = sum(int(line.split('\t', 1)[1].strip()) for line in group)
+        print(f"{key}\t{total_count}")
+    except ValueError:
+        pass
+```
+
+Jalankan Hadoop Streaming:
+```bash
+hadoop jar $HADOOP_HOME/share/hadoop/tools/lib/hadoop-streaming-*.jar \ 
+  -files mapper.py,reducer.py \ 
+  -input /praktikum/latihan_mr/input \ 
+  -output /praktikum/latihan_mr/output_mr \ 
+  -mapper mapper.py \ 
+  -reducer reducer.py
+```
+
+Tips MapReduce:
+- Jika output sudah ada: `hdfs dfs -rm -r /praktikum/latihan_mr/output_mr`.
+- Lihat hasil: `hdfs dfs -cat /praktikum/latihan_mr/output_mr/part-*`.
+- Top 20 frekuensi (desc):
+  ```bash
+  hdfs dfs -cat /praktikum/latihan_mr/output_mr/part-* | sort -k2,2nr | head -n 20
+  ```
+- Ambil ke lokal (opsional):
+  ```bash
+  hdfs dfs -get /praktikum/latihan_mr/output_mr ./output_mr
+  ```
+
+---
+
+### Sesi 2 — Spark RDD
+Contoh via PySpark shell:
+```bash
+pyspark --master local[*]
+```
+
+Script RDD:
+```python
+# Pilih salah satu sumber data
+lines = spark.sparkContext.textFile("input.txt")
+# atau: lines = spark.sparkContext.textFile("hdfs:///praktikum/latihan_mr/input/input.txt")
+
+words = lines.flatMap(lambda s: s.lower().split())
+pairs = words.map(lambda w: (w, 1))
+counts = pairs.reduceByKey(lambda a, b: a + b)
+
+# Aksi
+counts.take(5)
+# Simpan (opsional)
+# counts.saveAsTextFile("output_rdd")
+```
+
+Catatan RDD:
+- Tanpa aksi seperti `collect()`, `take()`, atau `saveAsTextFile()`, transformasi tidak dieksekusi (lazy evaluation).
+- Gunakan `time` atau Spark UI (`http://localhost:4040`) untuk mengamati waktu eksekusi dan stage.
+
+---
+
+### Sesi 3 — Spark DataFrame/SQL
+```python
+from pyspark.sql.functions import explode, split, col
+
+df = spark.read.text("input.txt")
+# atau: df = spark.read.text("hdfs:///praktikum/latihan_mr/input/input.txt")
+
+words_df = df.select(explode(split(col("value"), " ")).alias("word")).filter(col("word") != "")
+counts_df = words_df.groupBy("word").count()
+
+counts_df.orderBy(col("count").desc()).show(10)
+
+# Bonus SQL
+counts_df.createOrReplaceTempView("word_counts")
+spark.sql("SELECT word, count FROM word_counts ORDER BY count DESC LIMIT 10").show()
+
+# Lihat rencana eksekusi
+counts_df.explain()
+```
+
+---
+
+### Hasil & Analisis
+Gunakan tabel berikut untuk membandingkan hasil (isi sesuai eksperimen Anda):
+
+| Teknologi | Waktu Eksekusi | Kompleksitas Kode | Kelebihan | Kekurangan |
+|-----------|----------------|-------------------|-----------|------------|
+| MapReduce | _(isi)_        | Tinggi            | Reliable, mature | Lambat, verbose |
+| Spark RDD | _(isi)_        | Sedang            | Fleksibel, cepat | Kurang optimasi otomatis |
+| DataFrame | _(isi)_        | Rendah            | Optimisasi Catalyst, paling cepat | Kurang fleksibel untuk operasi sangat kustom |
+
+Pertanyaan panduan:
+- Mengapa MapReduce memerlukan berkas `mapper` dan `reducer` terpisah?  
+  Jawab singkat: pemisahan fase Map/Reduce eksplisit dan berbasis stream.
+- Apa yang terjadi jika `collect()` dihapus pada RDD?  
+  Jawab singkat: tidak ada eksekusi karena lazy evaluation.
+- Mengapa DataFrame terasa lebih mudah?  
+  Jawab singkat: API deklaratif mirip SQL; dioptimalkan oleh Catalyst.
+
+---
+
+### Troubleshooting
+- Permission denied `mapper.py`: `chmod +x mapper.py reducer.py`.
+- Output directory exists: `hdfs dfs -rm -r /praktikum/latihan_mr/output_mr`.
+- PySpark tidak ditemukan: `export PATH=$SPARK_HOME/bin:$PATH`.
+- `input.txt` tidak ditemukan: verifikasi path (lokal/HDFS) dan izin akses.
+- Memory error Spark: jalankan dengan `pyspark --driver-memory 4g --executor-memory 4g`.
+
+### Bukti Eksperimen (Gambar)
+Sertakan tangkapan layar hasil eksekusi pada bagian ini:
+
+![Hadoop Streaming Output](doc/pr1.png)
+_Gambar 1. Hasil MapReduce (Hadoop Streaming) untuk Word Count._
+
+![Spark RDD/DataFrame Output](doc/pr2.png)
+_Gambar 2. Hasil Word Count menggunakan Spark (RDD/DataFrame/SQL)._ 
+
+Letakkan file pada folder `doc/` dengan nama: `doc/pr1.png` dan `doc/pr2.png`.
+
+### Checklist Praktikum 2
+- [ ] MapReduce sukses, hasil diverifikasi dari HDFS.
+- [ ] Spark RDD berjalan dan menyimpan/menampilkan hasil.
+- [ ] Spark DataFrame/SQL menampilkan top 10 kata.
+- [ ] Tabel perbandingan dan analisis terisi.
+- [ ] Screenshot disimpan di folder `doc/`.
 
 ---
 
