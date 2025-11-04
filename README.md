@@ -10,7 +10,7 @@
 2. [Praktikum 1 – HDFS, MongoDB, Cassandra](#praktikum-1--hdfs-mongodb-cassandra)
 3. [Praktikum 2 – Word Count (MapReduce, Spark RDD, DataFrame)](#praktikum-2--word-count-mapreduce-spark-rdd-dataframe)
 4. [Praktikum 3 – Data Integration: Sqoop, Flume, dan Kafka](#praktikum-3--data-integration-sqoop-flume-dan-kafka)
-5. [Praktikum 4 – _(sesuaikan topik)_](#praktikum-4--)
+5. [Praktikum 4 – Data Preprocessing (Dari Segi Mahasiswa)](#praktikum-4--data-preprocessing-dari-segi-mahasiswa)
 6. [Refleksi Akhir](#refleksi-akhir)
 7. [Lampiran](#lampiran)
 
@@ -20,7 +20,7 @@
 > - [✅] Praktikum 1 selesai
 > - [✅] Praktikum 2 selesai
 > - [✅] Praktikum 3 selesai
-> - [ ] Praktikum 4 selesai
+> - [✅] Praktikum 4 selesai
 
 ---
 
@@ -1086,18 +1086,34 @@ Topic already exists
 
 ---
 
-## Praktikum 4 – _(sesuaikan topik)_
-Sediakan ruang untuk:
-- Rangkaian percobaan lanjutan (misal Spark, Streaming, atau Machine Learning).
-- Benchmarking kecil beserta tabel perbandingan.
-- Evaluasi akhir terhadap performa cluster atau pipeline.
+## Praktikum 4 – Data Preprocessing (Dari Segi Mahasiswa)
 
-Gunakan tabel untuk merangkum hasil, contoh:
+- Bukti praktik Colab: https://colab.research.google.com/drive/1Mrcmb1RouR4SbKiU1z_kHCrqY48TL7Vs?usp=sharing
 
-| Pengujian | Deskripsi | Waktu Eksekusi | Catatan |
-|-----------|-----------|----------------|---------|
-| Test 1    | _Isi_     | _00:00_        | _Insight_ |
-| Test 2    | _Isi_     | _00:00_        | _Insight_ |
+Ringkasan praktik:
+- Memuat dataset, memeriksa tipe data, dan statistik ringkas.
+- Menangani missing values (drop vs imputasi: mean/median/mode sesuai tipe dan distribusi).
+- Encoding fitur kategorikal (One-Hot untuk nominal, Ordinal/Label untuk yang berurutan).
+- Feature scaling (StandardScaler untuk sebaran ~normal, MinMaxScaler untuk rentang tetap/algoritma jarak).
+- Deteksi dan penanganan outlier (IQR z-score), sesuai konteks domain agar tidak menghilangkan sinyal penting.
+- Split data train/test dengan stratify bila klasifikasi tidak seimbang; validasi via k-fold jika diperlukan.
+- Menyusun pipeline preprocessing agar langkah konsisten antara train dan test, meminimalkan data leakage.
+
+Jawaban pertanyaan (ringkas):
+- Tujuan preprocessing: meningkatkan kualitas data sehingga model stabil, akurat, dan tidak bias akibat noise, skala tidak seragam, atau nilai hilang.
+- Drop vs imputasi: drop bila proporsi hilang kecil dan acak; imputasi bila menjaga representasi penting, pilih strategi sesuai tipe (numerik: mean/median; kategorikal: modus/‘Unknown’).
+- Kapan pakai median daripada mean: saat distribusi miring atau ada outlier kuat; median lebih robust.
+- One-Hot vs Label/Ordinal Encoding: One-Hot untuk kategori nominal tanpa urutan; Label/Ordinal bila ada urutan alami (mis. kecil < sedang < besar).
+- StandardScaler vs MinMaxScaler: StandardScaler menormalkan ke mean 0 std 1 (cocok untuk model asumsi Gaussian); MinMax mengubah ke [0,1] (baik untuk metode berbasis jarak/gradien yang sensitif skala).
+- Outlier: identifikasi dengan IQR/z-score; opsi: winsorizing, transformasi (log), model robust, atau isolasi jika benar-benar error. Jangan menghapus tanpa pertimbangan konteks.
+- Data leakage: terjadi saat informasi test ‘bocor’ ke train (mis. fit scaler di seluruh data). Cegah dengan pipeline/fit hanya pada train lalu apply ke test.
+- Stratified split: menjaga proporsi kelas seimbang di train/test agar metrik tidak menipu pada dataset imbalanced.
+- Evaluasi: gunakan metrik sesuai tugas (RMSE/MAE untuk regresi; precision/recall/F1/AUC untuk klasifikasi) setelah preprocessing diterapkan konsisten.
+
+Catatan mahasiswa:
+- Preprocessing memberi dampak besar pada hasil model; kualitas > kuantitas fitur.
+- Pipeline membantu reprodusibilitas serta mengurangi human error saat inferensi.
+- Dokumentasi setiap keputusan (alasan memilih imputasi/encoder/scaler) memudahkan audit dan iterasi.
 
 ---
 
